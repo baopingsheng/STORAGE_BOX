@@ -57,7 +57,6 @@
         style.id = 'facebook-content-blocker-styles';
         style.textContent = `
 .fb-content-blocked{display:none!important}
-.fb-content-placeholder{border-radius:8px;background-color:#f0f2f5;padding:12px;margin:8px 0;font-family:Helvetica,Arial,sans-serif;color:#65676b;font-size:14px;text-align:center}
         `;
         document.head.appendChild(style);
     }
