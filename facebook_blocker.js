@@ -4,7 +4,7 @@
 // @version      1.0
 // @description  Chặn post Facebook có chứa các từ cụ thể
 // @author       baopingsheng
-// @match        https://www.facebook.com/*
+// @match        https://*.facebook.com/*
 // @grant        none
 // @run-at       document-start
 // ==/UserScript==
