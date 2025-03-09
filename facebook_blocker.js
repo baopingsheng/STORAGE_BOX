@@ -503,14 +503,14 @@
 
     // Recheck content periodically to catch items missed by observers
     function setupPeriodicCheck() {
-        // Check every 3 seconds
+        // Check every 2 seconds
         setInterval(() => {
             if (isRelevantPage()) {
                 checkAndBlockContent();
                 checkExpandedContent(); // Also check for any expanded content
                 monitorSeeMoreButtons(); // Look for new See More buttons
             }
-        }, 0);
+        }, 2000);
     }
 
     // Check if current page is Facebook
