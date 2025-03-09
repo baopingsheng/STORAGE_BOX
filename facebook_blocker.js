@@ -2,7 +2,7 @@
 // @name         Facebook Content Blocker
 // @namespace    http://tampermonkey.net/
 // @version      1.0
-// @description  Chặn post Facebook có chứa các từ cụ thể
+// @description  Delete Facebook posts containing specific keywords.
 // @author       baopingsheng
 // @match        https://*.facebook.com/*
 // @grant        none
@@ -32,8 +32,8 @@
                            'phạm thoại','mẹ bé bắp','mẹ bắp','master anh đức','lasvegas','bacarat',
                            'oppa huy idol','phú đầu bò','master','bậc thầy',
                            'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
-                           'phim cực ngắn','vinh gấu','vtv news','baby three','loramen','tizi','đích lép',
-                           'đại tiểu thư','đài truyền tin','multi tv',];
+                           'phim cực ngắn','vinh gấu','vtv news','baby three','loramen','tizi','đại tiểu thư',
+                           'đài truyền tin','multi tv',];
     let isObserving = false;
     let observer = null;
 
@@ -47,8 +47,8 @@
         reels: 'div[data-pagelet="ReelsForYou"], div[data-pagelet="ReelsUnit"], div[data-testid="reels_video_container"]',
         // Page content
         pageContent: 'div[data-pagelet="PageFeed"], div[data-pagelet="PageProfileContentFeed"]',
-        // Comments (might contain blocked content)
-        comments: 'div[data-testid="UFI2CommentsList"] div[role="article"]',
+        // Individual comments (not the entire comment section)
+        comments: 'div[role="article"][data-testid="UFI2Comment"], div.UFIComment, div[data-testid="comment"]',
         // Stories
         stories: 'div[data-pagelet="Stories"], div[role="dialog"] div[aria-label*="story"], div[data-pagelet="StoriesTray"]',
         // Watch videos
@@ -56,16 +56,6 @@
         // Marketplace listings
         marketplace: 'div[data-pagelet="Marketplace"], div[data-pagelet="MarketplaceFeed"]'
     };
-
-    // Add custom CSS to hide blocked content
-    function addCustomStyles() {
-        const style = document.createElement('style');
-        style.id = 'facebook-content-blocker-styles';
-        style.textContent = `
-.fb-content-blocked{display:none!important}
-        `;
-        document.head.appendChild(style);
-    }
 
     // Check if text contains any blocked words (improved matching)
     function containsBlockedContent(text) {
@@ -82,15 +72,7 @@
         return false;
     }
 
-    // Create a placeholder element to replace blocked content
-    function createPlaceholder() {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'fb-content-placeholder';
-        placeholder.textContent = 'Content filtered (contains blocked keyword)';
-        return placeholder;
-    }
-
-    // Process a single element to check and block if necessary
+    // Process a single element to check and remove if necessary
     function processElement(element, contentType) {
         // Skip already processed elements
         if (element.dataset.contentChecked === 'true') {
@@ -100,31 +82,196 @@
         // Get text content of the element
         const elementText = element.textContent;
 
-        // Only block if content actually contains blocked words
+        // Only remove if content actually contains blocked words
         if (elementText && containsBlockedContent(elementText)) {
-            // Add class to hide the element
-            element.classList.add('fb-content-blocked');
-
-            // Debug info
+            // Find the found word for logging
             const foundWord = BLOCKED_WORDS.find(word => {
                 const regex = new RegExp(`\\b${word}\\b|${word}`, 'i');
                 return regex.test(elementText.toLowerCase());
             });
 
-            element.dataset.blockedReason = 'Contains blocked word: ' + foundWord;
-
-            // For reels and stories, we might want to show a placeholder instead
-            if (contentType === 'reels' || contentType === 'stories') {
-                const parent = element.parentNode;
-                if (parent) {
-                    const placeholder = createPlaceholder();
-                    parent.insertBefore(placeholder, element.nextSibling);
+            if (contentType === 'comments') {
+                console.log(`Removed comment containing blocked word: ${foundWord}`);
+                // Remove only the specific comment
+                if (element && element.parentNode) {
+                    element.parentNode.removeChild(element);
+                }
+            } else {
+                console.log(`Removed content containing blocked word: ${foundWord}`);
+                // Remove the element
+                if (element && element.parentNode) {
+                    element.parentNode.removeChild(element);
                 }
             }
+
+            return; // Element removed, no need to mark as processed
         }
 
         // Mark as processed
         element.dataset.contentChecked = 'true';
+    }
+
+    // Find and monitor "See more" buttons more effectively
+    function monitorSeeMoreButtons() {
+        // More comprehensive selectors for "See more" buttons on Facebook
+        const seeMoreCandidates = [
+            // Target by text content
+            ...Array.from(document.querySelectorAll('div[role="button"], span[role="button"], a[role="button"]')).filter(el => {
+                const text = el.textContent.trim().toLowerCase();
+                return text === 'see more' ||
+                       text === 'xem thêm';
+            }),
+
+            // Target by attributes (Facebook often uses these)
+            ...Array.from(document.querySelectorAll('[aria-expanded="false"]')),
+
+            // Target by specific Facebook classes and data attributes
+            ...Array.from(document.querySelectorAll('div[data-ad-comet-preview-button], div[data-ad-preview-may-show-truncation]')),
+
+            // Target expanded text spans that might contain "See more"
+            ...Array.from(document.querySelectorAll('.text_exposed_link')),
+
+            // Target by common Facebook patterns
+            ...Array.from(document.querySelectorAll('span.see_more_link, a.see_more_link')),
+
+            // Catch specific text elements with ellipsis that might be expandable
+            ...Array.from(document.querySelectorAll('span')).filter(el => el.textContent.includes('...')),
+        ];
+
+        // Process each potential "See more" button
+        seeMoreCandidates.forEach(button => {
+            // Skip if already monitored
+            if (button.dataset.seeMoreMonitored === 'true') {
+                return;
+            }
+
+            // Mark as monitored to avoid duplicate handlers
+            button.dataset.seeMoreMonitored = 'true';
+
+            // Use event capture to ensure we get the click before Facebook's handler
+            button.addEventListener('click', function(e) {
+                // Store reference to the clicked element
+                const clickedButton = this;
+
+                // Find the closest post or comment container
+                let contentContainer = findContentContainer(clickedButton);
+
+                // If we have a container, we'll check it after a delay
+                if (contentContainer) {
+                    // Wait for FB to expand the content (use multiple timeouts for reliability)
+                    [300, 500, 1000].forEach(delay => {
+                        setTimeout(() => {
+                            // Get the current text after expansion
+                            const expandedText = contentContainer.textContent;
+
+                            // Check if expanded content contains blocked words
+                            if (containsBlockedContent(expandedText)) {
+                                // Find the found word for logging
+                                const foundWord = BLOCKED_WORDS.find(word => {
+                                    const regex = new RegExp(`\\b${word}\\b|${word}`, 'i');
+                                    return regex.test(expandedText.toLowerCase());
+                                });
+
+                                // Check if this is a comment
+                                const isComment = contentContainer.matches(CONTENT_SELECTORS.comments) ||
+                                                 contentContainer.closest(CONTENT_SELECTORS.comments);
+
+                                if (isComment) {
+                                    console.log(`Removed expanded comment containing blocked word: ${foundWord}`);
+                                    // Only remove the specific comment
+                                    if (contentContainer && contentContainer.parentNode) {
+                                        contentContainer.parentNode.removeChild(contentContainer);
+                                    }
+                                } else {
+                                    console.log(`Removed expanded content containing blocked word: ${foundWord}`);
+                                    // Remove the post
+                                    if (contentContainer && contentContainer.parentNode) {
+                                        contentContainer.parentNode.removeChild(contentContainer);
+                                    }
+                                }
+                            }
+                        }, delay);
+                    });
+                }
+            }, { capture: true });
+        });
+    }
+
+    // Find the content container (post or comment) from a child element
+    function findContentContainer(element) {
+        // First check if this is within a comment
+        let commentContainer = element.closest(CONTENT_SELECTORS.comments);
+        if (commentContainer) {
+            return commentContainer; // Return the specific comment if found
+        }
+
+        // Otherwise, look for a post container
+        return findPostContainer(element);
+    }
+
+    // Find the post container from a child element (improved version)
+    function findPostContainer(element) {
+        // Start from the element and go up the DOM tree
+        let current = element;
+        const maxIterations = 15; // Increased search depth
+        let iterations = 0;
+
+        while (current && iterations < maxIterations) {
+            // Check for post containers using multiple criteria
+
+            // 1. Check by role attribute
+            if (current.getAttribute('role') === 'article' &&
+                !current.matches(CONTENT_SELECTORS.comments)) {
+                return current;
+            }
+
+            // 2. Check by common Facebook post classes
+            if (current.classList.contains('userContentWrapper') ||
+                current.classList.contains('_5pcr') ||
+                current.classList.contains('_1dwg') ||
+                current.classList.contains('_4-u2') ||
+                current.classList.contains('_4_j4')) {
+                return current;
+            }
+
+            // 3. Check by data attributes
+            if (current.dataset && (
+                (current.dataset.pagelet && current.dataset.pagelet.includes('FeedUnit')) ||
+                current.dataset.testid === 'fbfeed_story' ||
+                current.dataset.testid === 'post_container'
+            )) {
+                return current;
+            }
+
+            // 4. Check for feed units and posts by specific attributes
+            if (current.getAttribute('data-ft') ||
+                current.getAttribute('data-insertion-position') ||
+                current.getAttribute('data-ad-preview')) {
+                return current;
+            }
+
+            // Try parent
+            current = current.parentElement;
+            iterations++;
+        }
+
+        // If we couldn't find a specific post container, try a reasonable fallback
+        if (element) {
+            // Look for nearest divs with substantial content
+            let fallbackContainer = element.closest('div[data-pagelet], div[data-ft], div[data-testid]');
+            if (fallbackContainer) return fallbackContainer;
+
+            // Go up 3-5 levels as last resort
+            let parent = element.parentElement;
+            for (let i = 0; i < 4 && parent; i++) {
+                if (parent.childNodes.length > 2) { // Has multiple children, likely a container
+                    return parent;
+                }
+                parent = parent.parentElement;
+            }
+        }
+
+        return null;
     }
 
     // Main function to check and block content
@@ -139,6 +286,26 @@
 
         // Special handling for suggested groups/pages sections
         blockSuggestedContent();
+
+        // Process specific comment blocks with individual checks
+        processCommentSections();
+
+        // Monitor "See more" buttons
+        monitorSeeMoreButtons();
+    }
+
+    // Special handling for comment sections
+    function processCommentSections() {
+        // Find comment sections
+        const commentSections = document.querySelectorAll('div[data-testid="UFI2CommentsList"], div.UFIList, div[data-testid="comments-feed"]');
+
+        commentSections.forEach(section => {
+            // Don't process the entire section, only individual comments
+            const comments = section.querySelectorAll(CONTENT_SELECTORS.comments);
+            comments.forEach(comment => {
+                processElement(comment, 'comments');
+            });
+        });
     }
 
     // Block suggested groups, pages, and other recommendations
@@ -149,7 +316,10 @@
             if (group.dataset.contentChecked !== 'true') {
                 const groupText = group.textContent;
                 if (groupText && containsBlockedContent(groupText)) {
-                    group.classList.add('fb-content-blocked');
+                    if (group && group.parentNode) {
+                        group.parentNode.removeChild(group);
+                    }
+                    return; // Group removed, no need to mark as processed
                 }
                 group.dataset.contentChecked = 'true';
             }
@@ -162,13 +332,61 @@
                 const pageText = page.textContent;
                 if (pageText && containsBlockedContent(pageText)) {
                     const container = page.closest('div[role="complementary"]');
-                    if (container) {
-                        container.classList.add('fb-content-blocked');
-                    } else {
-                        page.classList.add('fb-content-blocked');
+                    if (container && container.parentNode) {
+                        container.parentNode.removeChild(container);
+                    } else if (page && page.parentNode) {
+                        page.parentNode.removeChild(page);
                     }
+                    return; // Page removed, no need to mark as processed
                 }
                 page.dataset.contentChecked = 'true';
+            }
+        });
+    }
+
+    // Additional function to handle expanded text that might appear after clicking "See more"
+    function checkExpandedContent() {
+        // Look for content that has been expanded but not checked
+        const expandedContainers = document.querySelectorAll('[aria-expanded="true"]:not([data-expanded-checked="true"])');
+
+        expandedContainers.forEach(container => {
+            // Mark as checked
+            container.dataset.expandedChecked = 'true';
+
+            // Determine if this is a comment or post
+            const isComment = container.matches(CONTENT_SELECTORS.comments) ||
+                             container.closest(CONTENT_SELECTORS.comments);
+
+            // Find the appropriate container
+            const contentContainer = isComment ?
+                container.closest(CONTENT_SELECTORS.comments) :
+                findPostContainer(container);
+
+            if (contentContainer) {
+                const expandedText = contentContainer.textContent;
+
+                // Check if expanded content has blocked words
+                if (containsBlockedContent(expandedText)) {
+                    // Find the found word for logging
+                    const foundWord = BLOCKED_WORDS.find(word => {
+                        const regex = new RegExp(`\\b${word}\\b|${word}`, 'i');
+                        return regex.test(expandedText.toLowerCase());
+                    });
+
+                    if (isComment) {
+                        console.log(`Removed expanded comment containing blocked word: ${foundWord}`);
+                        // Only remove the specific comment
+                        if (contentContainer && contentContainer.parentNode) {
+                            contentContainer.parentNode.removeChild(contentContainer);
+                        }
+                    } else {
+                        console.log(`Removed expanded content containing blocked word: ${foundWord}`);
+                        // Remove the post
+                        if (contentContainer && contentContainer.parentNode) {
+                            contentContainer.parentNode.removeChild(contentContainer);
+                        }
+                    }
+                }
             }
         });
     }
@@ -192,33 +410,51 @@
         const config = {
             childList: true,
             subtree: true,
-            characterData: true
+            characterData: true,
+            attributes: true, // Monitor attribute changes to catch expansions
+            attributeFilter: ['aria-expanded'] // Specifically watch for expansion attributes
         };
 
         // Create observer instance
         observer = new MutationObserver((mutations) => {
             let shouldCheck = false;
+            let hasExpandedContent = false;
 
             for (let mutation of mutations) {
-                if (mutation.type === 'childList' || mutation.type === 'characterData') {
-                    // Look for significant DOM changes that might indicate new content
-                    if (mutation.addedNodes.length > 0) {
-                        for (let node of mutation.addedNodes) {
-                            if (node.nodeType === 1) { // Element node
-                                shouldCheck = true;
-                                break;
-                            }
+                // Check for DOM node additions (new content)
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    for (let node of mutation.addedNodes) {
+                        if (node.nodeType === 1) { // Element node
+                            shouldCheck = true;
+                            break;
                         }
                     }
-
-                    if (shouldCheck) break;
                 }
+
+                // Check for aria-expanded attribute changes
+                if (mutation.type === 'attributes' &&
+                    mutation.attributeName === 'aria-expanded' &&
+                    mutation.target.getAttribute('aria-expanded') === 'true') {
+                    hasExpandedContent = true;
+                }
+
+                if (shouldCheck && hasExpandedContent) break;
             }
 
-            if (shouldCheck) {
+            if (shouldCheck || hasExpandedContent) {
                 // Delay slightly to allow Facebook to finish rendering
                 clearTimeout(window._checkTimeout);
-                window._checkTimeout = setTimeout(checkAndBlockContent, 100);
+                window._checkTimeout = setTimeout(() => {
+                    checkAndBlockContent();
+
+                    if (hasExpandedContent) {
+                        // Specifically check for newly expanded content
+                        checkExpandedContent();
+                    }
+
+                    // Always look for new See More buttons
+                    monitorSeeMoreButtons();
+                }, 150);
             }
         });
 
@@ -227,13 +463,24 @@
         isObserving = true;
     }
 
+    // Document click handler to catch all clicks that might expand content
+    function setupGlobalClickHandler() {
+        document.addEventListener('click', function(e) {
+            // Wait a bit after any click to check for expanded content
+            setTimeout(() => {
+                checkExpandedContent();
+            }, 500);
+        }, { passive: true });
+    }
+
     // Handle scrolling to check for dynamically loaded content
     function handleScroll() {
         // Debounce scroll event to improve performance
         clearTimeout(window._scrollTimeout);
         window._scrollTimeout = setTimeout(() => {
             checkAndBlockContent();
-        }, 100);
+            monitorSeeMoreButtons(); // Look for new See More buttons when scrolling
+        }, 200);
     }
 
     // Detect URL changes for SPA navigation
@@ -260,6 +507,12 @@
             // Clear any previously marked elements
             document.querySelectorAll('[data-content-checked="true"]').forEach(el => {
                 delete el.dataset.contentChecked;
+            });
+            document.querySelectorAll('[data-see-more-monitored="true"]').forEach(el => {
+                delete el.dataset.seeMoreMonitored;
+            });
+            document.querySelectorAll('[data-expanded-checked="true"]').forEach(el => {
+                delete el.dataset.expandedChecked;
             });
 
             // Wait for new page to load
@@ -304,12 +557,14 @@
 
     // Recheck content periodically to catch items missed by observers
     function setupPeriodicCheck() {
-        // Check every 5 seconds (increased from 3 to reduce processing load)
+        // Check every 3 seconds
         setInterval(() => {
             if (isRelevantPage()) {
                 checkAndBlockContent();
+                checkExpandedContent(); // Also check for any expanded content
+                monitorSeeMoreButtons(); // Look for new See More buttons
             }
-        }, 1000);
+        }, 3000);
     }
 
     // Check if current page is Facebook
@@ -323,12 +578,10 @@
         // Only run on Facebook
         if (!isRelevantPage()) return;
 
-        // Add custom styles
-        addCustomStyles();
-
         // Set up observers
         setupMutationObserver();
         setupURLChangeDetection();
+        setupGlobalClickHandler(); // Add global click handler
 
         // Add scroll event listener
         window.addEventListener('scroll', handleScroll, {passive: true});
