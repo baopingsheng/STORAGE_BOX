@@ -32,8 +32,8 @@
                            'phạm thoại','mẹ bé bắp','mẹ bắp','master anh đức','lasvegas','bacarat',
                            'oppa huy idol','phú đầu bò','master','bậc thầy',
                            'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
-                           'phim cực ngắn','vinh gấu','vtv news','baby three','loramen','tizi','đại tiểu thư',
-                           'đài truyền tin','multi tv',];
+                           'phim cực ngắn','vinh gấu','vtv news','baby three','loramen','tizi','đích lép',
+                           'đại tiểu thư','đài truyền tin','multi tv',];
     let isObserving = false;
     let observer = null;
 
