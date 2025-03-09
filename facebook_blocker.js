@@ -368,7 +368,7 @@
                 checkExpandedContent();
                 monitorSeeMoreButtons();
             }
-        }, 3000);
+        }, 2000);
     }
 
     // Check if current page is Facebook
