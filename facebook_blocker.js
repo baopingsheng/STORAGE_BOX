@@ -2,7 +2,7 @@
 // @name         Facebook Content Blocker
 // @namespace    http://tampermonkey.net/
 // @version      1.0
-// @description  Delete Facebook posts containing specific keywords.
+// @description  Delete Facebook posts containing specific keywords, sponsored posts, and suggested content from Threads and Instagram.
 // @author       baopingsheng
 // @match        https://*.facebook.com/*
 // @grant        none
@@ -33,7 +33,7 @@
                            'oppa huy idol','phú đầu bò','master','bậc thầy',
                            'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
                            'phim cực ngắn','vinh gấu','vtv news','baby three','loramen','tizi','đại tiểu thư',
-                           'đài truyền tin','multi tv','review','chê','riviu.vn'];
+                           'đài truyền tin','multi tv',];
     let isObserving = false;
     let observer = null;
 
@@ -46,7 +46,11 @@
         comments: 'div[data-testid="UFI2CommentsList"] div[role="article"]',
         stories: 'div[data-pagelet="Stories"], div[role="dialog"] div[aria-label*="story"], div[data-pagelet="StoriesTray"]',
         watchVideos: 'div[data-pagelet="WatchFeed"]',
-        marketplace: 'div[data-pagelet="Marketplace"], div[data-pagelet="MarketplaceFeed"]'
+        marketplace: 'div[data-pagelet="Marketplace"], div[data-pagelet="MarketplaceFeed"]',
+        sponsoredPosts: 'div[data-testid="story-subtitle"]:has(span:contains("Sponsored"))',
+        suggestedPosts: 'div[data-testid="story-subtitle"]:has(span:contains("Suggested for you"))',
+        threadsPosts: 'div[data-testid="story-subtitle"]:has(span:contains("Threads"))',
+        instagramPosts: 'div[data-testid="story-subtitle"]:has(span:contains("Instagram"))'
     };
 
     // Check if text contains any blocked words
