@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Facebook Content Blocker
 // @namespace    http://tampermonkey.net/
-// @version      1.1
-// @description  Delete Facebook posts containing specific keywords.
+// @version      1.0
+// @description  Delete Facebook posts containing specific keywords, sponsored posts, and suggested content from Threads and Instagram.
 // @author       baopingsheng
 // @match        https://*.facebook.com/*
 // @grant        none
@@ -13,7 +13,7 @@
     'use strict';
 
     // Configuration
-      const BLOCKED_WORDS = ['miibeo','negav','embes','kênh 14','kenh14','nêu bật',
+    const BLOCKED_WORDS = ['miibeo','negav','embes','kênh 14','kenh14','nêu bật',
                            'hóng biến','theanh28','thế anh 28','beatvn','showbiz','vgt',
                            'schannel','yeah1','yan','f4 vũng tàu','vietgiaitri','saoteen',
                            'mcv group','mcv network','mcvmedia','mcvshow','linh tinh','thịnh sếu','chồng sa lý',
@@ -32,7 +32,7 @@
                            'oppa huy idol','phú đầu bò','master','bậc thầy',
                            'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
                            'phim cực ngắn','vinh gấu','vtv news','baby three','loramen','tizi','đại tiểu thư',
-                           'đài truyền tin','multi tv',];
+                           'đài truyền tin','multi tv','chê','review'];
     let isObserving = false;
     let observer = null;
 
