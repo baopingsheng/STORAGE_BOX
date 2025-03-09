@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Facebook Content Blocker
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Delete Facebook posts containing specific keywords, sponsored posts, and suggested content from Threads and Instagram.
+// @version      1.1
+// @description  Delete Facebook posts containing specific keywords.
 // @author       baopingsheng
 // @match        https://*.facebook.com/*
 // @grant        none
@@ -13,8 +13,7 @@
     'use strict';
 
     // Configuration
-    // Các từ cần chặn (không phân biệt hoa thường)
-        const BLOCKED_WORDS = ['miibeo','negav','embes','kênh 14','kenh14','nêu bật',
+      const BLOCKED_WORDS = ['miibeo','negav','embes','kênh 14','kenh14','nêu bật',
                            'hóng biến','theanh28','thế anh 28','beatvn','showbiz','vgt',
                            'schannel','yeah1','yan','f4 vũng tàu','vietgiaitri','saoteen',
                            'mcv group','mcv network','mcvmedia','mcvshow','linh tinh','thịnh sếu','chồng sa lý',
@@ -46,11 +45,7 @@
         comments: 'div[data-testid="UFI2CommentsList"] div[role="article"]',
         stories: 'div[data-pagelet="Stories"], div[role="dialog"] div[aria-label*="story"], div[data-pagelet="StoriesTray"]',
         watchVideos: 'div[data-pagelet="WatchFeed"]',
-        marketplace: 'div[data-pagelet="Marketplace"], div[data-pagelet="MarketplaceFeed"]',
-        sponsoredPosts: 'div[data-testid="story-subtitle"]:has(span:contains("Sponsored"))',
-        suggestedPosts: 'div[data-testid="story-subtitle"]:has(span:contains("Suggested for you"))',
-        threadsPosts: 'div[data-testid="story-subtitle"]:has(span:contains("Threads"))',
-        instagramPosts: 'div[data-testid="story-subtitle"]:has(span:contains("Instagram"))'
+        marketplace: 'div[data-pagelet="Marketplace"], div[data-pagelet="MarketplaceFeed"]'
     };
 
     // Check if text contains any blocked words
