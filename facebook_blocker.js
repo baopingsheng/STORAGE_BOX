@@ -20,7 +20,7 @@
                            'khanh trung sĩ','lân jee','3 phút vui','thầy beo u40','60giay.com',
                            'showbeat','troll bóng đá','hcb','hoàng cửu bảo','huấn hoa hồng','bùi trà',
                            'xiang','hưởng đá','trương nguyên','bùi thu trà','ngân hà','man tv',
-                           'lớp người ta','phước lầy','thám tử','phở tái','cháo trắng','vợ chồng son',
+                           'lớp người ta','phước lầy','việt tân','thám tử','phở tái','cháo trắng','vợ chồng son',
                            'bạn đường hợp ý','vua mẹo vn','độc lạ việt nam','mcvnetwork','thvl',
                            'củ đậu story','anh mặt vuông','xương rồng media','man tv',
                            'khẩu nghiệp','svm','troll xe','kiến sĩ','xôn xao','wind music',
@@ -32,7 +32,7 @@
                            'oppa huy idol','phú đầu bò','master','bậc thầy','khu phố bất ổn',
                            'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
                            'phim cực ngắn','vinh gấu','vtc news','baby three','loramen','tizi','đại tiểu thư',
-                           'đài truyền tin','multi tv','chê','review','thánh cmnr',];
+                           'đài truyền tin','multi tv','chê phim','review phim','thánh cmnr','báo mới',];
     let isObserving = false;
     let observer = null;
 
