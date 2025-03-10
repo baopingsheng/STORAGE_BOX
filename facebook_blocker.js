@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Facebook Content Blocker
+// @name         Facebook Content Blocker (Clean Feed)
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  Delete Facebook posts containing specific keywords, sponsored posts, and suggested content from Threads/Instagram.
@@ -33,13 +33,18 @@
                            'oppa huy idol','phú đầu bò','master','bậc thầy','khu phố bất ổn',
                            'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
                            'phim cực ngắn','vinh gấu','vtc news','baby three','loramen','tizi','đại tiểu thư',
-                           'đài truyền tin','multi tv','chê phim','review phim','báo mới',];
+                           'đài truyền tin','multi tv','chê phim','review phim','báo mới',
+                           'blogphunu','viepaparazzi',];
 
     // Track processed elements to avoid re-processing
     let processedElements = new WeakSet();
+    let processedFeedItems = new WeakSet();
     let isObserving = false;
     let observer = null;
     let feedInitialized = false;
+    let feedContainer = null;
+    let initialFeedLoaded = false;
+    let feedStabilizationAttempts = 0;
 
     // Selectors for different types of Facebook content
     const CONTENT_SELECTORS = {
@@ -56,6 +61,14 @@
         watchVideos: 'div[data-pagelet="WatchFeed"]',
         marketplace: 'div[data-pagelet="Marketplace"], div[data-pagelet="MarketplaceFeed"]'
     };
+
+    // Debug logging
+    const DEBUG = false;
+    function log(...args) {
+        if (DEBUG) {
+            console.log('[FB Blocker]', ...args);
+        }
+    }
 
     // Check if text contains any blocked words
     function containsBlockedContent(text) {
@@ -91,6 +104,34 @@
         return placeholder;
     }
 
+    // Safe element removal that preserves feed structure
+    function safeRemoveElement(element) {
+        if (!element || !element.parentNode) return;
+
+        // First check if element is a direct feed child
+        const isFeedChild = feedContainer && feedContainer.contains(element) &&
+                           element.parentNode === feedContainer;
+
+        if (isFeedChild) {
+            // Critical feed element - replace with invisible placeholder
+            const placeholder = createPlaceholder();
+            try {
+                element.parentNode.replaceChild(placeholder, element);
+                log('Replaced feed element with placeholder');
+            } catch (e) {
+                log('Error replacing feed element:', e);
+            }
+        } else {
+            // Non-critical element - can be removed safely
+            try {
+                element.parentNode.removeChild(element);
+                log('Removed non-feed element');
+            } catch (e) {
+                log('Error removing element:', e);
+            }
+        }
+    }
+
     // Process a single element to check and remove if necessary
     function processElement(element) {
         if (!element || processedElements.has(element)) return;
@@ -102,25 +143,10 @@
         if (!elementText || !containsBlockedContent(elementText)) return;
 
         const foundWord = findBlockedWord(elementText);
-        console.log(`Removing content containing blocked word: ${foundWord}`);
+        log(`Removing content containing blocked word: ${foundWord}`);
 
-        // Determine if this is a direct child of the feed container
-        const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
-        const isFeedDirectChild = feedContainer && feedContainer.contains(element) &&
-                                  element.parentNode === feedContainer;
-
-        if (isFeedDirectChild) {
-            // For direct children of the feed, replace with placeholder to maintain structure
-            const placeholder = createPlaceholder();
-            if (element.parentNode) {
-                element.parentNode.replaceChild(placeholder, element);
-            }
-        } else {
-            // For all other elements, fully remove
-            if (element.parentNode) {
-                element.parentNode.removeChild(element);
-            }
-        }
+        // Don't remove the element immediately - use the safe remove function
+        safeRemoveElement(element);
     }
 
     // Find and monitor "See more" buttons
@@ -153,25 +179,10 @@
                             if (!expandedText || !containsBlockedContent(expandedText)) return;
 
                             const foundWord = findBlockedWord(expandedText);
-                            console.log(`Removing expanded content containing blocked word: ${foundWord}`);
+                            log(`Removing expanded content containing blocked word: ${foundWord}`);
 
-                            // Determine if this is a direct child of the feed container
-                            const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
-                            const isFeedDirectChild = feedContainer && feedContainer.contains(postContainer) &&
-                                                      postContainer.parentNode === feedContainer;
-
-                            if (isFeedDirectChild) {
-                                // For direct children of the feed, replace with placeholder
-                                const placeholder = createPlaceholder();
-                                if (postContainer.parentNode) {
-                                    postContainer.parentNode.replaceChild(placeholder, postContainer);
-                                }
-                            } else {
-                                // For all other elements, fully remove
-                                if (postContainer.parentNode) {
-                                    postContainer.parentNode.removeChild(postContainer);
-                                }
-                            }
+                            // Use safe removal
+                            safeRemoveElement(postContainer);
                         }, delay);
                     });
                 }
@@ -215,45 +226,58 @@
         return element.closest('div[data-pagelet], div[data-ft], div[data-testid]') || element.parentElement;
     }
 
-    // Main function to check and block content
-    function checkAndBlockContent() {
-        // First, check if feed exists and mark as initialized
-        const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
-        if (feedContainer && !feedInitialized) {
+    // Process feed posts without removing the feed itself
+    function processFeedItems() {
+        // First, find and update the feedContainer reference
+        feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
+        if (!feedContainer) return;
+
+        // CRITICAL: Never process the feed container itself - only its children
+        if (!feedInitialized) {
             feedInitialized = true;
-            console.log('Feed initialized');
+            log('Feed initialized, found container:', feedContainer);
         }
 
-        // Only process feed children if feed exists
-        if (feedContainer) {
-            // Process direct feed children carefully
-            Array.from(feedContainer.children).forEach(feedChild => {
-                if (!processedElements.has(feedChild)) {
-                    processedElements.add(feedChild);
+        // Process only direct children of the feed container to avoid removing the feed itself
+        Array.from(feedContainer.children).forEach(feedItem => {
+            if (processedFeedItems.has(feedItem)) return;
 
-                    const elementText = feedChild.textContent;
-                    if (elementText && containsBlockedContent(elementText)) {
-                        const foundWord = findBlockedWord(elementText);
-                        console.log(`Removing feed item containing blocked word: ${foundWord}`);
+            // Mark as processed to avoid re-processing
+            processedFeedItems.add(feedItem);
 
-                        // Replace with placeholder to maintain feed structure
-                        const placeholder = createPlaceholder();
-                        feedContainer.replaceChild(placeholder, feedChild);
-                    }
-                }
-            });
-        }
+            const itemText = feedItem.textContent;
+            if (!itemText || !containsBlockedContent(itemText)) return;
 
-        // Then process other content normally
+            const foundWord = findBlockedWord(itemText);
+            log(`Found blocked word "${foundWord}" in feed item, replacing with placeholder`);
+
+            // For feed items, always use placeholder replacement
+            const placeholder = createPlaceholder();
+            try {
+                feedContainer.replaceChild(placeholder, feedItem);
+            } catch (e) {
+                log('Error replacing feed item:', e);
+            }
+        });
+    }
+
+    // Process other content (non-feed items)
+    function processOtherContent() {
         Object.entries(CONTENT_SELECTORS).forEach(([type, selector]) => {
-            // Skip feedRootContainer as we already processed it
+            // Skip the feed container itself
             if (type === 'feedRootContainer') return;
 
             document.querySelectorAll(selector).forEach(element => {
                 processElement(element);
             });
         });
+    }
 
+    // Main function to check and block content
+    function checkAndBlockContent() {
+        // Process feed items separately from other content
+        processFeedItems();
+        processOtherContent();
         blockSuggestedContent();
         monitorSeeMoreButtons();
     }
@@ -268,7 +292,7 @@
             const groupText = group.textContent;
             if (groupText && containsBlockedContent(groupText)) {
                 const foundWord = findBlockedWord(groupText);
-                console.log(`Removing suggested group containing blocked word: ${foundWord}`);
+                log(`Removing suggested group containing blocked word: ${foundWord}`);
 
                 // Suggestions are not part of the main feed, can remove safely
                 if (group.parentNode) {
@@ -285,7 +309,7 @@
             const pageText = page.textContent;
             if (pageText && containsBlockedContent(pageText)) {
                 const foundWord = findBlockedWord(pageText);
-                console.log(`Removing suggested page containing blocked word: ${foundWord}`);
+                log(`Removing suggested page containing blocked word: ${foundWord}`);
 
                 // Right rail content is also safe to remove
                 const container = page.closest('div[role="complementary"]');
@@ -312,25 +336,10 @@
             if (!expandedText || !containsBlockedContent(expandedText)) return;
 
             const foundWord = findBlockedWord(expandedText);
-            console.log(`Removing expanded content containing blocked word: ${foundWord}`);
+            log(`Removing expanded content containing blocked word: ${foundWord}`);
 
-            // Check if this is a direct child of feed
-            const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
-            const isFeedDirectChild = feedContainer && feedContainer.contains(postContainer) &&
-                                      postContainer.parentNode === feedContainer;
-
-            if (isFeedDirectChild) {
-                // Replace with placeholder
-                const placeholder = createPlaceholder();
-                if (postContainer.parentNode) {
-                    postContainer.parentNode.replaceChild(placeholder, postContainer);
-                }
-            } else {
-                // For other elements, fully remove
-                if (postContainer.parentNode) {
-                    postContainer.parentNode.removeChild(postContainer);
-                }
-            }
+            // Use safe removal
+            safeRemoveElement(postContainer);
         });
     }
 
@@ -357,11 +366,18 @@
             let hasExpandedContent = false;
             let feedChanged = false;
 
+            // Update feed container reference if needed
+            const currentFeedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
+            if (currentFeedContainer !== feedContainer) {
+                feedContainer = currentFeedContainer;
+                feedChanged = true;
+                log('Feed container reference updated');
+            }
+
             mutations.forEach(mutation => {
-                // Check if feed container has changed
-                if (mutation.type === 'childList' &&
-                    (mutation.target.matches?.(CONTENT_SELECTORS.feedRootContainer) ||
-                    mutation.target.querySelector?.(CONTENT_SELECTORS.feedRootContainer))) {
+                // Special handling for feed container changes
+                if (feedContainer && (mutation.target === feedContainer ||
+                    feedContainer.contains(mutation.target))) {
                     feedChanged = true;
                 }
 
@@ -376,15 +392,17 @@
                 }
             });
 
-            if (feedChanged) {
-                // Feed structure changed, need to recheck
-                feedInitialized = false;
-            }
-
             if (shouldCheck || hasExpandedContent || feedChanged) {
                 clearTimeout(window._checkTimeout);
                 window._checkTimeout = setTimeout(() => {
-                    checkAndBlockContent();
+                    // If feed changed, process feed items first
+                    if (feedChanged) {
+                        processFeedItems();
+                    }
+
+                    if (shouldCheck) {
+                        checkAndBlockContent();
+                    }
 
                     if (hasExpandedContent) {
                         checkExpandedContent();
@@ -397,6 +415,7 @@
 
         observer.observe(targetNode, config);
         isObserving = true;
+        log('Mutation observer set up');
     }
 
     // Document click handler to catch all clicks that might expand content
@@ -420,7 +439,11 @@
     // Reset tracking data for when page changes
     function resetTracking() {
         processedElements = new WeakSet();
+        processedFeedItems = new WeakSet();
         feedInitialized = false;
+        initialFeedLoaded = false;
+        feedStabilizationAttempts = 0;
+        log('Reset tracking data');
     }
 
     // Detect URL changes for SPA navigation
@@ -440,7 +463,7 @@
 
             setTimeout(() => {
                 setupMutationObserver();
-                checkAndBlockContent();
+                waitForFeed();
             }, 1000);
         }
 
@@ -448,6 +471,7 @@
             const url = location.href;
             if (url !== lastUrl) {
                 lastUrl = url;
+                log('URL changed to:', url);
                 handleNavigation();
             }
         });
@@ -460,6 +484,7 @@
 
             if (location.href !== lastUrl) {
                 lastUrl = location.href;
+                log('pushState URL changed to:', lastUrl);
                 handleNavigation();
             }
         };
@@ -467,80 +492,112 @@
         window.addEventListener('popstate', () => {
             if (location.href !== lastUrl) {
                 lastUrl = location.href;
+                log('popstate URL changed to:', lastUrl);
                 handleNavigation();
             }
         });
     }
 
-    // Function to wait for feed to stabilize
-    function waitForFeedStabilization() {
-        let stableCount = 0;
-        let lastFeedChildCount = -1;
+    // Function to wait for feed to be available and stable
+    function waitForFeed() {
+        // Look for the feed container
+        feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
 
-        function checkFeedStability() {
-            const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
+        if (!feedContainer) {
+            // Feed not found yet, retry after a delay
+            log('Feed not found yet, retrying...');
+            setTimeout(waitForFeed, 500);
+            return;
+        }
+
+        log('Feed found, monitoring for stability...');
+        waitForFeedStabilization();
+    }
+
+    // Wait for feed to stabilize before processing
+    function waitForFeedStabilization() {
+        let lastChildCount = -1;
+        let stableCount = 0;
+
+        function checkStability() {
+            feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
+
             if (!feedContainer) {
-                setTimeout(checkFeedStability, 500);
+                log('Feed container disappeared, restarting wait process');
+                setTimeout(waitForFeed, 500);
                 return;
             }
 
             const currentChildCount = feedContainer.children.length;
+            log(`Feed has ${currentChildCount} items, previous count: ${lastChildCount}`);
 
-            if (currentChildCount === lastFeedChildCount) {
+            // Check if content count is stable
+            if (currentChildCount === lastChildCount && currentChildCount > 0) {
                 stableCount++;
-                if (stableCount >= 3) {
-                    // Feed seems stable, now process it
+                log(`Feed stable for ${stableCount} checks`);
+
+                if (stableCount >= 2) {
+                    log('Feed appears stable, beginning content processing');
+                    initialFeedLoaded = true;
                     checkAndBlockContent();
                     return;
                 }
             } else {
                 stableCount = 0;
-                lastFeedChildCount = currentChildCount;
+                lastChildCount = currentChildCount;
             }
 
-            setTimeout(checkFeedStability, 500);
+            // Safety check - give up waiting after too many attempts
+            feedStabilizationAttempts++;
+            if (feedStabilizationAttempts > 20) {
+                log('Giving up on feed stabilization, processing anyway');
+                initialFeedLoaded = true;
+                checkAndBlockContent();
+                return;
+            }
+
+            setTimeout(checkStability, 500);
         }
 
-        checkFeedStability();
+        checkStability();
     }
 
     // Recheck content periodically to catch items missed by observers
     function setupPeriodicCheck() {
         setInterval(() => {
-            if (isRelevantPage()) {
+            if (isRelevantPage() && initialFeedLoaded) {
                 checkAndBlockContent();
                 checkExpandedContent();
                 monitorSeeMoreButtons();
             }
-        }, 2000);
+        }, 3000);
     }
+
     // Check if current page is Facebook
     function isRelevantPage() {
         const url = window.location.href;
         return url.includes('facebook.com') || url.includes('fb.com');
     }
 
-    // Check if element could be important for feed structure
-    function isStructuralElement(element) {
-        // Check if element is a direct child of the feed
-        const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
-        return feedContainer && feedContainer.contains(element) && element.parentNode === feedContainer;
-    }
-
     // Initialize everything
     function initialize() {
         if (!isRelevantPage()) return;
-        // Add a short delay to ensure Facebook has had time to render its initial content
+
+        log('Initializing Facebook Content Blocker v1.2');
+
+        // Set up event listeners and observers
+        setupURLChangeDetection();
+        setupGlobalClickHandler();
+        window.addEventListener('scroll', handleScroll, {passive: true});
+
+        // Delay setup to ensure Facebook has loaded
         setTimeout(() => {
             setupMutationObserver();
-            setupURLChangeDetection();
-            setupGlobalClickHandler();
-            window.addEventListener('scroll', handleScroll, {passive: true});
-            waitForFeedStabilization(); // Wait for feed to be stable before first check
+            waitForFeed();
             setupPeriodicCheck();
+        }, 2000);
 
-            console.log('Enhanced Facebook content blocker initialized v1.1. Using selective removal with structure preservation.');
-        }, 1500); // Give Facebook some time to initialize
+        console.log('Facebook content blocker initialized v1.2. Using enhanced feed preservation.');
     }
 
     // Start when DOM is ready
