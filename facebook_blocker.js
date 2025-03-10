@@ -32,9 +32,13 @@
                            'oppa huy idol','phú đầu bò','master','bậc thầy',
                            'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
                            'phim cực ngắn','vinh gấu','vtv news','baby three','loramen','tizi','đại tiểu thư',
-                           'đài truyền tin','multi tv','chê','review'];
+                           'đài truyền tin','multi tv','chê','review phim','phim review',];
     let isObserving = false;
     let observer = null;
+
+    // Track modal state to prevent feed clearing on modal close
+    let isModalOpen = false;
+    let lastModalState = false;
 
     // Selectors for different types of Facebook content
     const CONTENT_SELECTORS = {
@@ -62,6 +66,9 @@
     // Process a single element to check and remove if necessary
     function processElement(element) {
         if (!element || element.dataset.contentChecked === 'true') return;
+
+        // Skip processing when exiting modal
+        if (wasModalJustClosed()) return;
 
         const elementText = element.textContent;
 
@@ -165,8 +172,49 @@
         return element.closest('div[data-pagelet], div[data-ft], div[data-testid]') || element.parentElement;
     }
 
+    // Check if a modal dialog is open
+    function isInModalView() {
+        const modalSelectors = [
+            'div[role="dialog"]',
+            'div[aria-modal="true"]',
+            'div[data-pagelet="PhotoViewerModal"]',
+            'div.__fb-light-mode',
+            'div.uiLayer',
+            'div[data-pagelet="TahoeRightRail"]'
+        ];
+
+        return modalSelectors.some(selector => document.querySelector(selector) !== null);
+    }
+
+    // Check if a modal was just closed
+    function wasModalJustClosed() {
+        const currentModalState = isInModalView();
+
+        // If a modal was open and now is closed
+        if (lastModalState && !currentModalState) {
+            // Update the state and return true
+            lastModalState = currentModalState;
+            // Delay updating this flag to avoid content removal during transition
+            setTimeout(() => { isModalOpen = false; }, 1000);
+            return true;
+        }
+
+        // Update state and return false if not in transition
+        if (lastModalState !== currentModalState) {
+            lastModalState = currentModalState;
+            isModalOpen = currentModalState;
+        }
+
+        return false;
+    }
+
     // Main function to check and block content
     function checkAndBlockContent() {
+        // Skip content removal when in modal view or just closed
+        if (isModalOpen || wasModalJustClosed()) {
+            return;
+        }
+
         Object.entries(CONTENT_SELECTORS).forEach(([contentType, selector]) => {
             document.querySelectorAll(selector).forEach(element => {
                 processElement(element, contentType);
@@ -179,6 +227,9 @@
 
     // Block suggested groups, pages, and other recommendations
     function blockSuggestedContent() {
+        // Skip when modal was just closed
+        if (wasModalJustClosed()) return;
+
         document.querySelectorAll('div[data-pagelet="GroupSuggestions"]').forEach(group => {
             if (group.dataset.contentChecked !== 'true') {
                 const groupText = group.textContent;
@@ -211,6 +262,9 @@
 
     // Additional function to handle expanded text that might appear after clicking "See more"
     function checkExpandedContent() {
+        // Skip when in modal view or just closed
+        if (isModalOpen || wasModalJustClosed()) return;
+
         document.querySelectorAll('[aria-expanded="true"]:not([data-expanded-checked="true"])').forEach(container => {
             container.dataset.expandedChecked = 'true';
 
@@ -256,6 +310,9 @@
             let shouldCheck = false;
             let hasExpandedContent = false;
 
+            // Update modal state on DOM changes
+            wasModalJustClosed();
+
             mutations.forEach(mutation => {
                 if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
                     shouldCheck = true;
@@ -266,18 +323,28 @@
                     mutation.target.getAttribute('aria-expanded') === 'true') {
                     hasExpandedContent = true;
                 }
+
+                // Check for modal state changes
+                if (mutation.type === 'childList' ||
+                    (mutation.type === 'attributes' &&
+                     (mutation.attributeName === 'role' ||
+                      mutation.attributeName === 'aria-modal'))) {
+                    wasModalJustClosed();
+                }
             });
 
             if (shouldCheck || hasExpandedContent) {
                 clearTimeout(window._checkTimeout);
                 window._checkTimeout = setTimeout(() => {
-                    checkAndBlockContent();
+                    if (!isModalOpen && !wasModalJustClosed()) {
+                        checkAndBlockContent();
 
-                    if (hasExpandedContent) {
-                        checkExpandedContent();
+                        if (hasExpandedContent) {
+                            checkExpandedContent();
+                        }
+
+                        monitorSeeMoreButtons();
                     }
-
-                    monitorSeeMoreButtons();
                 }, 150);
             }
         });
@@ -289,18 +356,42 @@
     // Document click handler to catch all clicks that might expand content
     function setupGlobalClickHandler() {
         document.addEventListener('click', function(e) {
+            // Check if we're clicking something that might open a modal
+            const potentialModalTrigger = e.target.closest('a[href*="photo"], a[href*="photos"], a[href*="video"], [role="button"][aria-label*="photo"], [role="link"][aria-label*="photo"]');
+
+            if (potentialModalTrigger) {
+                isModalOpen = true;
+                lastModalState = true;
+                console.log("Detected potential modal trigger click");
+            }
+
+            // Wait for possible modal to appear and content to expand
             setTimeout(() => {
-                checkExpandedContent();
+                if (!isModalOpen) {
+                    checkExpandedContent();
+                }
             }, 500);
         }, { passive: true });
+
+        // Also monitor for Escape key to detect modal closing via keyboard
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && isModalOpen) {
+                console.log("Escape key pressed while modal is open");
+                setTimeout(() => {
+                    wasModalJustClosed();
+                }, 100);
+            }
+        });
     }
 
     // Handle scrolling to check for dynamically loaded content
     function handleScroll() {
         clearTimeout(window._scrollTimeout);
         window._scrollTimeout = setTimeout(() => {
-            checkAndBlockContent();
-            monitorSeeMoreButtons();
+            if (!isModalOpen && !wasModalJustClosed()) {
+                checkAndBlockContent();
+                monitorSeeMoreButtons();
+            }
         }, 200);
     }
 
@@ -310,6 +401,10 @@
 
         function handleNavigation() {
             if (!isRelevantPage()) return;
+
+            // Reset modal state on navigation
+            isModalOpen = false;
+            lastModalState = false;
 
             if (observer) {
                 observer.disconnect();
@@ -363,12 +458,12 @@
     // Recheck content periodically to catch items missed by observers
     function setupPeriodicCheck() {
         setInterval(() => {
-            if (isRelevantPage()) {
+            if (isRelevantPage() && !isModalOpen && !wasModalJustClosed()) {
                 checkAndBlockContent();
                 checkExpandedContent();
                 monitorSeeMoreButtons();
             }
-        }, 2000);
+        }, 3000);
     }
 
     // Check if current page is Facebook
@@ -388,7 +483,7 @@
         checkAndBlockContent();
         setupPeriodicCheck();
 
-        console.log('Enhanced Facebook content blocker initialized - DELETE VERSION. Blocking content containing:', BLOCKED_WORDS);
+        console.log('Enhanced Facebook content blocker initialized - v1.2 (Fixed modal issue). Blocking content containing:', BLOCKED_WORDS);
     }
 
     // Start when DOM is ready
