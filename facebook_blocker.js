@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Clean Feed (Facebook Content Blocker)
+// @name         Clean Feed (Facebook Content Blocker) - Fixed
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Delete Facebook posts containing specific keywords, sponsored posts, and suggested content from Threads/Instagram.
 // @author       baopingsheng
 // @match        https://*.facebook.com/*
@@ -40,6 +40,9 @@
     let isObserving = false;
     let observer = null;
     let feedInitialized = false;
+
+    // Track if we've preserved the first post
+    let firstPostPreserved = false;
 
     // Selectors for different types of Facebook content
     const CONTENT_SELECTORS = {
@@ -119,31 +122,50 @@
         // Mark as processed to avoid re-processing
         processedElements.add(element);
 
+        // Get element text
         const elementText = element.textContent;
-        if (!elementText || !containsBlockedContent(elementText)) return;
+
+        // Check if contains blocked content
+        const hasBlockedContent = elementText && containsBlockedContent(elementText);
+
+        // Special handling for first post - NEVER remove it if it's actually the first post
+        // Instead, we'll just create a hidden placeholder for it if it contains blocked content
+        if (isFirstPost) {
+            // If this is the first run and this is the first post in the feed
+            if (!firstPostPreserved) {
+                console.log("Preserving first post structure to maintain feed integrity");
+                firstPostPreserved = true;
+
+                // If it has blocked content, we'll still hide it, but keep its structure
+                if (hasBlockedContent) {
+                    const foundWord = findBlockedWord(elementText);
+                    console.log(`First post contains blocked word: ${foundWord} - hiding content but preserving structure`);
+
+                    // Hide the content while preserving the element
+                    element.style.opacity = '0';
+                    element.style.minHeight = '5px'; // Minimal height to keep structure
+                    element.style.overflow = 'hidden';
+                    element.setAttribute('data-blocked-content', 'true');
+
+                    // Clear the content but maintain the element
+                    while (element.firstChild) {
+                        element.removeChild(element.firstChild);
+                    }
+                }
+
+                // Always return without removing the first post
+                return;
+            }
+        }
+
+        // Normal processing for non-first posts or subsequent runs
+        if (!hasBlockedContent) return;
 
         const foundWord = findBlockedWord(elementText);
         console.log(`Removing feed item containing blocked word: ${foundWord}`);
 
-        // Create placeholder that maintains the feed structure
+        // Create and replace with placeholder
         const placeholder = createPlaceholder(element);
-
-        // For the first post, we need extra care to ensure feed structure remains intact
-        if (isFirstPost) {
-            console.log("Processing first post in feed - using placeholder to maintain feed structure");
-
-            // Copy essential attributes that Facebook uses to track feed components
-            if (element.id) placeholder.id = element.id;
-            Array.from(element.attributes)
-                .filter(attr => attr.name.startsWith('data-'))
-                .forEach(attr => placeholder.setAttribute(attr.name, attr.value));
-
-            // Ensure placeholder has a proper role or data attribute if the original had one
-            if (element.getAttribute('role')) {
-                placeholder.setAttribute('role', element.getAttribute('role'));
-            }
-        }
-
         if (element.parentNode) {
             element.parentNode.replaceChild(placeholder, element);
         }
@@ -168,6 +190,31 @@
                                  element.parentNode === feedContainer;
 
         if (isFeedDirectChild) {
+            // Check if it's the first child of the feed
+            const isFirstChild = feedContainer &&
+                                feedContainer.children.length > 0 &&
+                                feedContainer.children[0] === element;
+
+            // If it's the first child and we haven't preserved a first post yet,
+            // we need special handling to maintain feed integrity
+            if (isFirstChild && !firstPostPreserved) {
+                console.log("Processing first post with special handling");
+                firstPostPreserved = true;
+
+                // Hide content but preserve structure
+                element.style.opacity = '0';
+                element.style.minHeight = '5px';
+                element.style.overflow = 'hidden';
+                element.setAttribute('data-blocked-content', 'true');
+
+                // Clear the content
+                while (element.firstChild) {
+                    element.removeChild(element.firstChild);
+                }
+                return;
+            }
+
+            // Standard placeholder for feed items after first post
             const placeholder = createPlaceholder(element);
             if (element.parentNode) {
                 element.parentNode.replaceChild(placeholder, element);
@@ -216,6 +263,29 @@
                             const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
                             const isFeedDirectChild = feedContainer && feedContainer.contains(postContainer) &&
                                                      postContainer.parentNode === feedContainer;
+
+                            // Check if it's the first child of the feed
+                            const isFirstChild = feedContainer &&
+                                               feedContainer.children.length > 0 &&
+                                               feedContainer.children[0] === postContainer;
+
+                            // Special handling for first child
+                            if (isFirstChild && !firstPostPreserved) {
+                                console.log("Preserving expanded first post structure");
+                                firstPostPreserved = true;
+
+                                // Hide content but preserve structure
+                                postContainer.style.opacity = '0';
+                                postContainer.style.minHeight = '5px';
+                                postContainer.style.overflow = 'hidden';
+                                postContainer.setAttribute('data-blocked-content', 'true');
+
+                                // Clear the content
+                                while (postContainer.firstChild) {
+                                    postContainer.removeChild(postContainer.firstChild);
+                                }
+                                return;
+                            }
 
                             if (isFeedDirectChild) {
                                 // For direct children of the feed, replace with placeholder
@@ -379,6 +449,29 @@
             const isFeedDirectChild = feedContainer && feedContainer.contains(postContainer) &&
                                      postContainer.parentNode === feedContainer;
 
+            // Check if it's the first child
+            const isFirstChild = feedContainer &&
+                                feedContainer.children.length > 0 &&
+                                feedContainer.children[0] === postContainer;
+
+            // Special handling for first post
+            if (isFirstChild && !firstPostPreserved) {
+                console.log("Preserving expanded first post structure");
+                firstPostPreserved = true;
+
+                // Hide content but preserve structure
+                postContainer.style.opacity = '0';
+                postContainer.style.minHeight = '5px';
+                postContainer.style.overflow = 'hidden';
+                postContainer.setAttribute('data-blocked-content', 'true');
+
+                // Clear content
+                while (postContainer.firstChild) {
+                    postContainer.removeChild(postContainer.firstChild);
+                }
+                return;
+            }
+
             if (isFeedDirectChild) {
                 // Replace with placeholder
                 const placeholder = createPlaceholder(postContainer);
@@ -427,6 +520,9 @@
                             if ((node.matches && node.matches(CONTENT_SELECTORS.feedRootContainer)) ||
                                 (node.querySelector && node.querySelector(CONTENT_SELECTORS.feedRootContainer))) {
                                 newFeedDetected = true;
+                                // Reset first post preservation when new feed is detected
+                                firstPostPreserved = false;
+                                console.log("New feed detected, resetting first post preservation");
                             }
                         }
                     });
@@ -485,6 +581,7 @@
     function resetTracking() {
         processedElements = new WeakSet();
         feedInitialized = false;
+        firstPostPreserved = false; // Reset first post preservation
     }
 
     // Detect URL changes for SPA navigation
@@ -574,7 +671,7 @@
     function initialize() {
         if (!isRelevantPage()) return;
 
-        console.log("Initializing Facebook content blocker v1.2");
+        console.log("Initializing Facebook content blocker v1.3 with improved feed preservation");
         setupMutationObserver();
         setupURLChangeDetection();
         setupGlobalClickHandler();
