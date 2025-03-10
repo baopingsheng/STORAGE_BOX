@@ -29,10 +29,10 @@
                            'thoibao','tuyền văn hóa','top comments','tin nóng','tin hot',
                            'la la school','tiktoker','truyện reddit','sk pictures','entertainment',
                            'phạm thoại','mẹ bé bắp','mẹ bắp','master anh đức','lasvegas','bacarat',
-                           'oppa huy idol','phú đầu bò','master','bậc thầy',
+                           'oppa huy idol','phú đầu bò','master','bậc thầy','khu phố bất ổn',
                            'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
-                           'phim cực ngắn','vinh gấu','vtv news','baby three','loramen','tizi','đại tiểu thư',
-                           'đài truyền tin','multi tv','chê','review phim','phim review',];
+                           'phim cực ngắn','vinh gấu','vtc news','baby three','loramen','tizi','đại tiểu thư',
+                           'đài truyền tin','multi tv','chê','review','thánh cmnr',];
     let isObserving = false;
     let observer = null;
 
