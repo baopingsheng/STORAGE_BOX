@@ -463,7 +463,7 @@
                 checkExpandedContent();
                 monitorSeeMoreButtons();
             }
-        }, 3000);
+        }, 1000);
     }
 
     // Check if current page is Facebook
