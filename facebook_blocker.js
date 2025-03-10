@@ -32,7 +32,7 @@
                            'oppa huy idol','phú đầu bò','master','bậc thầy','khu phố bất ổn',
                            'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
                            'phim cực ngắn','vinh gấu','vtc news','baby three','loramen','tizi','đại tiểu thư',
-                           'đài truyền tin','multi tv','chê phim','review phim','thánh cmnr','báo mới',];
+                           'đài truyền tin','multi tv','chê phim','review phim','báo mới',];
     let isObserving = false;
     let observer = null;
 
@@ -48,7 +48,6 @@
         marketplace: 'div[data-pagelet="Marketplace"], div[data-pagelet="MarketplaceFeed"]'
     };
 
-    // Check if text contains any blocked words
     function containsBlockedContent(text) {
         if (!text) return false;
 
@@ -59,7 +58,6 @@
         });
     }
 
-    // Process a single element to check and remove if necessary
     function processElement(element) {
         if (!element || element.dataset.contentChecked === 'true') return;
 
@@ -82,7 +80,6 @@
         element.dataset.contentChecked = 'true';
     }
 
-    // Find and monitor "See more" buttons
     function monitorSeeMoreButtons() {
         const seeMoreCandidates = [
             ...Array.from(document.querySelectorAll('div[role="button"], span[role="button"], a[role="button"]')).filter(el => {
@@ -129,7 +126,6 @@
         });
     }
 
-    // Find the post container from a child element
     function findPostContainer(element) {
         if (!element) return null;
 
@@ -165,7 +161,6 @@
         return element.closest('div[data-pagelet], div[data-ft], div[data-testid]') || element.parentElement;
     }
 
-    // Main function to check and block content
     function checkAndBlockContent() {
         Object.entries(CONTENT_SELECTORS).forEach(([contentType, selector]) => {
             document.querySelectorAll(selector).forEach(element => {
@@ -177,7 +172,6 @@
         monitorSeeMoreButtons();
     }
 
-    // Block suggested groups, pages, and other recommendations
     function blockSuggestedContent() {
         document.querySelectorAll('div[data-pagelet="GroupSuggestions"]').forEach(group => {
             if (group.dataset.contentChecked !== 'true') {
@@ -208,8 +202,6 @@
             }
         });
     }
-
-    // Additional function to handle expanded text that might appear after clicking "See more"
     function checkExpandedContent() {
         document.querySelectorAll('[aria-expanded="true"]:not([data-expanded-checked="true"])').forEach(container => {
             container.dataset.expandedChecked = 'true';
@@ -234,7 +226,6 @@
         });
     }
 
-    // Create and set up MutationObserver to detect new content
     function setupMutationObserver() {
         if (isObserving) return;
 
@@ -286,7 +277,6 @@
         isObserving = true;
     }
 
-    // Document click handler to catch all clicks that might expand content
     function setupGlobalClickHandler() {
         document.addEventListener('click', function(e) {
             setTimeout(() => {
@@ -295,7 +285,6 @@
         }, { passive: true });
     }
 
-    // Handle scrolling to check for dynamically loaded content
     function handleScroll() {
         clearTimeout(window._scrollTimeout);
         window._scrollTimeout = setTimeout(() => {
@@ -304,7 +293,6 @@
         }, 200);
     }
 
-    // Detect URL changes for SPA navigation
     function setupURLChangeDetection() {
         let lastUrl = location.href;
 
@@ -359,8 +347,6 @@
             }
         });
     }
-
-    // Recheck content periodically to catch items missed by observers
     function setupPeriodicCheck() {
         setInterval(() => {
             if (isRelevantPage()) {
@@ -368,16 +354,12 @@
                 checkExpandedContent();
                 monitorSeeMoreButtons();
             }
-        }, 3000);
+        }, 2000);
     }
-
-    // Check if current page is Facebook
     function isRelevantPage() {
         const url = window.location.href;
         return url.includes('facebook.com') || url.includes('fb.com');
     }
-
-    // Initialize everything
     function initialize() {
         if (!isRelevantPage()) return;
 
@@ -390,8 +372,6 @@
 
         console.log('Enhanced Facebook content blocker initialized - DELETE VERSION. Blocking content containing:', BLOCKED_WORDS);
     }
-
-    // Start when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initialize);
     } else {
