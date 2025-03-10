@@ -33,7 +33,7 @@
                            'oppa huy idol','phú đầu bò','master','bậc thầy','khu phố bất ổn',
                            'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
                            'phim cực ngắn','vinh gấu','vtc news','baby three','loramen','tizi','đại tiểu thư',
-                           'đài truyền tin','multi tv','chê phim','review phim','báo mới',];
+                           'đài truyền tin','multi tv','chê phim','review phim','báo mới','thánh cmnnr'];
 
     // Track processed elements to avoid re-processing
     let processedElements = new WeakSet();
