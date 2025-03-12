@@ -14,27 +14,23 @@
 
     // Configuration
     // Các từ khóa, trang và nhóm cần chặn (không phân biệt chữ hoa chữ thường)
-    const BLOCKED_WORDS = ['miibeo','negav','embes','kênh 14','kenh14','nêu bật',
-                           'hóng biến','theanh28','thế anh 28','beatvn','showbiz','vgt',
-                           'schannel','yeah1','yan','f4 vũng tàu','vietgiaitri','saoteen',
+    const BLOCKED_WORDS = ['miibeo','negav','embes','kênh 14','kenh14','nêu bật','multi tv','ciin',
+                           'hóng biến','theanh28','thế anh 28','beatvn','showbiz','vgt','vinh gấu',
+                           'schannel','yeah1','yan','f4 vũng tàu','vietgiaitri','saoteen','khu phố bất ổn',
                            'mcv group','mcv network','mcvmedia','mcvshow','linh tinh','thịnh sếu','chồng sa lý',
-                           'khanh trung sĩ','lân jee','3 phút vui','thầy beo u40','60giay.com',
+                           'khanh trung sĩ','lân jee','3 phút vui','thầy beo u40','60giay.com','phim cực ngắn',
                            'showbeat','troll bóng đá','hcb','hoàng cửu bảo','huấn hoa hồng','bùi trà',
-                           'xiang','hưởng đá','trương nguyên','bùi thu trà','ngân hà','man tv',
+                           'xiang','hưởng đá','trương nguyên','bùi thu trà','ngân hà','man tv','báo mới',
                            'lớp người ta','phước lầy','việt tân','thám tử','phở tái','cháo trắng','vợ chồng son',
-                           'bạn đường hợp ý','vua mẹo vn','độc lạ việt nam','mcvnetwork','thvl',
-                           'củ đậu story','anh mặt vuông','xương rồng media','man tv',
-                           'khẩu nghiệp','svm','troll xe','kiến sĩ','xôn xao','wind music',
-                           '3 phút bí ẩn','meow âm nhạc','độc lạ bình dương','anh áo đen',
-                           'spx entertainment','chú tùng ham vui','đàm đức review',
-                           'thoibao','tuyền văn hóa','top comments','tin nóng','tin hot',
-                           'la la school','tiktoker','truyện reddit','sk pictures','entertainment',
-                           'phạm thoại','mẹ bé bắp','mẹ bắp','master anh đức','lasvegas','bacarat',
-                           'oppa huy idol','phú đầu bò','master','bậc thầy','khu phố bất ổn',
-                           'biết tuốt','bà tuyết','ciin','ngô đình nam','anhloren','the face vietnam',
-                           'phim cực ngắn','vinh gấu','vtc news','baby three','loramen','tizi','đại tiểu thư',
-                           'đài truyền tin','multi tv','chê phim','review phim','báo mới','thánh cmnnr','chê phim',
-                           'review phim','phim review','saostar', 'vnexpress',];
+                           'bạn đường hợp ý','vua mẹo vn','độc lạ việt nam','mcvnetwork','thvl','đài truyền tin',
+                           'củ đậu story','anh mặt vuông','xương rồng media','man tv','loramen','tizi','anhloren',
+                           'khẩu nghiệp','svm','troll xe','kiến sĩ','xôn xao','wind music','vtc news','baby three',
+                           '3 phút bí ẩn','meow âm nhạc','độc lạ bình dương','anh áo đen','chê phim','review phim',
+                           'spx entertainment','chú tùng ham vui','đàm đức review','đích lép','đại tiểu thư',
+                           'thoibao','tuyền văn hóa','top comments','tin nóng','tin hot','saostar', 'vnexpress',
+                           'la la school','tiktoker','truyện reddit','sk pictures','entertainment','ngô đình nam',
+                           'phạm thoại','mẹ bé bắp','mẹ bắp','master anh đức','lasvegas','bacarat','the face vietnam',
+                           'oppa huy idol','phú đầu bò','master','bậc thầy','biết tuốt','bà tuyết',];
 
     // Track processed elements to avoid re-processing
     let processedElements = new WeakSet();
