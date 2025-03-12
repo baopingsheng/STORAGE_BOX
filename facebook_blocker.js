@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Clean Feed (Facebook Content Blocker) - Fixed
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.0
 // @description  Delete Facebook posts containing specific keywords, sponsored posts, and suggested content from Threads/Instagram.
 // @author       baopingsheng
 // @match        https://*.facebook.com/*
@@ -26,7 +26,7 @@
                            'củ đậu story','anh mặt vuông','xương rồng media','man tv',
                            'khẩu nghiệp','svm','troll xe','kiến sĩ','xôn xao','wind music',
                            '3 phút bí ẩn','meow âm nhạc','độc lạ bình dương','anh áo đen',
-                           'spx entertainment','chú tùng ham vui','đàm đức review',
+                           'spx entertainment','chú tùng ham vui','đàm đức review','kênh của chang',
                            'thoibao','tuyền văn hóa','top comments','tin nóng','tin hot',
                            'la la school','tiktoker','truyện reddit','sk pictures','entertainment',
                            'phạm thoại','mẹ bé bắp','mẹ bắp','master anh đức','lasvegas','bacarat',
@@ -39,10 +39,15 @@
     let processedElements = new WeakSet();
     let isObserving = false;
     let observer = null;
-    let feedInitialized = false;
+    let feedObserver = null; // Dedicated observer for feed changes
 
-    // Track if we've preserved the first post
-    let firstPostPreserved = false;
+    // Critical feed state tracking
+    let feedInitialized = false;
+    let feedContainer = null;
+    let firstPostsHandled = new Set(); // Track feed containers where first post has been handled
+
+    // Last URL to track navigation
+    let lastUrl = '';
 
     // Selectors for different types of Facebook content
     const CONTENT_SELECTORS = {
@@ -59,6 +64,14 @@
         watchVideos: 'div[data-pagelet="WatchFeed"]',
         marketplace: 'div[data-pagelet="Marketplace"], div[data-pagelet="MarketplaceFeed"]'
     };
+
+    // Debug utilities - set to true to enable debugging logs
+    const DEBUG = false;
+    function debugLog(...args) {
+        if (DEBUG) {
+            console.log('[FB Blocker]', ...args);
+        }
+    }
 
     // Check if text contains any blocked words
     function containsBlockedContent(text) {
@@ -82,7 +95,7 @@
         });
     }
 
-    // Create a placeholder element that maintains feed structure
+    // Create a placeholder element that maintains feed structure without breaking it
     function createPlaceholder(originalElement) {
         const placeholder = document.createElement('div');
 
@@ -95,12 +108,13 @@
             placeholder.className = originalElement.className;
         }
 
-        // Essential styles to keep it in the DOM but invisible
-        placeholder.style.height = '0';
+        // Keep some minimal styling that doesn't break the feed
+        placeholder.style.minHeight = '1px';
         placeholder.style.margin = '0';
         placeholder.style.padding = '0';
         placeholder.style.overflow = 'hidden';
         placeholder.style.opacity = '0';
+        placeholder.style.pointerEvents = 'none';
 
         // Mark as a placeholder
         placeholder.setAttribute('data-blocked-content', 'true');
@@ -115,12 +129,44 @@
         return placeholder;
     }
 
-    // Process a feed element specifically - with special handling for first post
+    // Special handling for the first post - preserve it visually but hide content
+    function preserveFirstPost(element) {
+        // For the first post, we don't remove it completely to preserve feed structure
+        debugLog("Preserving first post while hiding blocked content");
+
+        // Keep the element structure but hide its content
+        const originalHeight = element.offsetHeight;
+        const minimumHeight = Math.max(5, Math.min(originalHeight * 0.1, 20));
+
+        // Create a wrapper to replace all the contents but keep the post in the DOM
+        const wrapper = document.createElement('div');
+        wrapper.style.minHeight = minimumHeight + 'px';
+        wrapper.style.opacity = '0.01'; // Very subtle indicator, almost invisible
+        wrapper.setAttribute('data-blocked-first-post', 'true');
+
+        // Clear the post content but maintain the element in DOM
+        element.style.minHeight = minimumHeight + 'px';
+
+        // Keep the element's original size attributes
+        element.style.width = element.offsetWidth ? (element.offsetWidth + 'px') : '';
+
+        // Remove all content while keeping the main element
+        while (element.firstChild) {
+            element.removeChild(element.firstChild);
+        }
+
+        // Add our wrapper to keep some height
+        element.appendChild(wrapper);
+
+        // Mark as processed
+        processedElements.add(element);
+
+        return true;
+    }
+
+    // Process a feed element with special handling for the first post
     function processFeedElement(element, feedContainer, isFirstPost = false) {
         if (!element || processedElements.has(element)) return;
-
-        // Mark as processed to avoid re-processing
-        processedElements.add(element);
 
         // Get element text
         const elementText = element.textContent;
@@ -128,103 +174,97 @@
         // Check if contains blocked content
         const hasBlockedContent = elementText && containsBlockedContent(elementText);
 
-        // Special handling for first post - NEVER remove it if it's actually the first post
-        // Instead, we'll just create a hidden placeholder for it if it contains blocked content
+        // Special handling for first post to maintain feed integrity
         if (isFirstPost) {
-            // If this is the first run and this is the first post in the feed
-            if (!firstPostPreserved) {
-                console.log("Preserving first post structure to maintain feed integrity");
-                firstPostPreserved = true;
+            // If it has blocked content, preserve the structure but hide content
+            if (hasBlockedContent) {
+                const foundWord = findBlockedWord(elementText);
+                debugLog(`First post contains blocked word: ${foundWord} - preserving structure`);
 
-                // If it has blocked content, we'll still hide it, but keep its structure
-                if (hasBlockedContent) {
-                    const foundWord = findBlockedWord(elementText);
-                    console.log(`First post contains blocked word: ${foundWord} - hiding content but preserving structure`);
-
-                    // Hide the content while preserving the element
-                    element.style.opacity = '0';
-                    element.style.minHeight = '5px'; // Minimal height to keep structure
-                    element.style.overflow = 'hidden';
-                    element.setAttribute('data-blocked-content', 'true');
-
-                    // Clear the content but maintain the element
-                    while (element.firstChild) {
-                        element.removeChild(element.firstChild);
-                    }
-                }
-
-                // Always return without removing the first post
+                // Special preservation for first post
+                preserveFirstPost(element);
                 return;
             }
+
+            // If no blocked content, mark as processed and leave it alone
+            processedElements.add(element);
+            return;
         }
 
-        // Normal processing for non-first posts or subsequent runs
-        if (!hasBlockedContent) return;
+        // For all other posts, proceed with normal processing
+        if (!hasBlockedContent) {
+            processedElements.add(element);
+            return;
+        }
 
         const foundWord = findBlockedWord(elementText);
-        console.log(`Removing feed item containing blocked word: ${foundWord}`);
+        debugLog(`Removing feed item containing blocked word: ${foundWord}`);
 
         // Create and replace with placeholder
         const placeholder = createPlaceholder(element);
         if (element.parentNode) {
             element.parentNode.replaceChild(placeholder, element);
         }
+
+        // Mark as processed
+        processedElements.add(placeholder);
     }
 
     // Process a single element to check and remove if necessary (non-feed items)
     function processElement(element) {
         if (!element || processedElements.has(element)) return;
 
-        // Mark as processed to avoid re-processing
-        processedElements.add(element);
-
         const elementText = element.textContent;
-        if (!elementText || !containsBlockedContent(elementText)) return;
+        if (!elementText || !containsBlockedContent(elementText)) {
+            processedElements.add(element);
+            return;
+        }
 
         const foundWord = findBlockedWord(elementText);
-        console.log(`Removing content containing blocked word: ${foundWord}`);
+        debugLog(`Removing content containing blocked word: ${foundWord}`);
 
-        // For feed child elements, use a placeholder
-        const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
-        const isFeedDirectChild = feedContainer && feedContainer.contains(element) &&
-                                 element.parentNode === feedContainer;
+        // Find all feed containers - we need to check if this element is inside one
+        const allFeedContainers = document.querySelectorAll(CONTENT_SELECTORS.feedRootContainer);
 
-        if (isFeedDirectChild) {
-            // Check if it's the first child of the feed
-            const isFirstChild = feedContainer &&
-                                feedContainer.children.length > 0 &&
-                                feedContainer.children[0] === element;
+        // Check if element is a direct child of a feed container
+        let isFeedDirectChild = false;
+        let isFirstChild = false;
+        let relevantFeedContainer = null;
 
-            // If it's the first child and we haven't preserved a first post yet,
-            // we need special handling to maintain feed integrity
-            if (isFirstChild && !firstPostPreserved) {
-                console.log("Processing first post with special handling");
-                firstPostPreserved = true;
+        for (const container of allFeedContainers) {
+            if (container.contains(element) && element.parentNode === container) {
+                isFeedDirectChild = true;
+                relevantFeedContainer = container;
 
-                // Hide content but preserve structure
-                element.style.opacity = '0';
-                element.style.minHeight = '5px';
-                element.style.overflow = 'hidden';
-                element.setAttribute('data-blocked-content', 'true');
-
-                // Clear the content
-                while (element.firstChild) {
-                    element.removeChild(element.firstChild);
-                }
-                return;
+                // Check if it's the first post
+                isFirstChild = container.children.length > 0 &&
+                               container.children[0] === element;
+                break;
             }
+        }
 
-            // Standard placeholder for feed items after first post
-            const placeholder = createPlaceholder(element);
-            if (element.parentNode) {
-                element.parentNode.replaceChild(placeholder, element);
+        // Handle based on position
+        if (isFeedDirectChild) {
+            if (isFirstChild && !firstPostsHandled.has(relevantFeedContainer)) {
+                // This is the first post and we haven't handled it yet for this feed
+                firstPostsHandled.add(relevantFeedContainer);
+                preserveFirstPost(element);
+            } else {
+                // Standard placeholder for regular feed items
+                const placeholder = createPlaceholder(element);
+                if (element.parentNode) {
+                    element.parentNode.replaceChild(placeholder, element);
+                }
+                processedElements.add(placeholder);
             }
         } else {
-            // For all other elements, remove them
+            // For elements not directly in feed, we can remove them
             if (element.parentNode) {
                 element.parentNode.removeChild(element);
             }
         }
+
+        processedElements.add(element);
     }
 
     // Find and monitor "See more" buttons
@@ -243,7 +283,6 @@
 
         seeMoreCandidates.forEach(button => {
             if (processedElements.has(button)) return;
-
             processedElements.add(button);
 
             button.addEventListener('click', function(e) {
@@ -251,50 +290,44 @@
                 const postContainer = findPostContainer(clickedButton);
 
                 if (postContainer) {
+                    // Schedule delayed checks after content expands
                     [300, 500, 1000].forEach(delay => {
                         setTimeout(() => {
                             const expandedText = postContainer.textContent;
                             if (!expandedText || !containsBlockedContent(expandedText)) return;
 
                             const foundWord = findBlockedWord(expandedText);
-                            console.log(`Removing expanded content containing blocked word: ${foundWord}`);
+                            debugLog(`Removing expanded content with blocked word: ${foundWord}`);
 
-                            // Determine if this is a direct child of the feed container
-                            const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
-                            const isFeedDirectChild = feedContainer && feedContainer.contains(postContainer) &&
-                                                     postContainer.parentNode === feedContainer;
+                            // Determine if this is a part of the feed
+                            const allFeedContainers = document.querySelectorAll(CONTENT_SELECTORS.feedRootContainer);
+                            let isFeedDirectChild = false;
+                            let isFirstChild = false;
+                            let relevantFeedContainer = null;
 
-                            // Check if it's the first child of the feed
-                            const isFirstChild = feedContainer &&
-                                               feedContainer.children.length > 0 &&
-                                               feedContainer.children[0] === postContainer;
-
-                            // Special handling for first child
-                            if (isFirstChild && !firstPostPreserved) {
-                                console.log("Preserving expanded first post structure");
-                                firstPostPreserved = true;
-
-                                // Hide content but preserve structure
-                                postContainer.style.opacity = '0';
-                                postContainer.style.minHeight = '5px';
-                                postContainer.style.overflow = 'hidden';
-                                postContainer.setAttribute('data-blocked-content', 'true');
-
-                                // Clear the content
-                                while (postContainer.firstChild) {
-                                    postContainer.removeChild(postContainer.firstChild);
+                            for (const container of allFeedContainers) {
+                                if (container.contains(postContainer) && postContainer.parentNode === container) {
+                                    isFeedDirectChild = true;
+                                    relevantFeedContainer = container;
+                                    isFirstChild = container.children.length > 0 &&
+                                                 container.children[0] === postContainer;
+                                    break;
                                 }
-                                return;
                             }
 
+                            // Handle based on position
                             if (isFeedDirectChild) {
-                                // For direct children of the feed, replace with placeholder
-                                const placeholder = createPlaceholder(postContainer);
-                                if (postContainer.parentNode) {
-                                    postContainer.parentNode.replaceChild(placeholder, postContainer);
+                                if (isFirstChild && !firstPostsHandled.has(relevantFeedContainer)) {
+                                    firstPostsHandled.add(relevantFeedContainer);
+                                    preserveFirstPost(postContainer);
+                                } else {
+                                    const placeholder = createPlaceholder(postContainer);
+                                    if (postContainer.parentNode) {
+                                        postContainer.parentNode.replaceChild(placeholder, postContainer);
+                                    }
                                 }
                             } else {
-                                // For all other elements, fully remove
+                                // For non-feed items we can safely remove them
                                 if (postContainer.parentNode) {
                                     postContainer.parentNode.removeChild(postContainer);
                                 }
@@ -344,34 +377,35 @@
 
     // Main function to check and block content
     function checkAndBlockContent() {
-        // Get the feed container
+        // Find all feed containers
         const feedContainers = document.querySelectorAll(CONTENT_SELECTORS.feedRootContainer);
 
-        // Process each feed container carefully
+        // Process each feed container
         feedContainers.forEach(feedContainer => {
-            // Skip if no children in the feed
+            // Skip if no children
             if (!feedContainer || !feedContainer.children || feedContainer.children.length === 0) return;
 
-            // Process children individually
+            // Set up a dedicated observer for this feed if not already observed
+            setupFeedObserver(feedContainer);
+
+            // Process the feed's children
             const children = Array.from(feedContainer.children);
 
-            // Process each child, with special handling for the first post
-            children.forEach((feedChild, index) => {
-                // Skip already processed elements
-                if (processedElements.has(feedChild)) return;
-
-                // Check if this is the first post (index 0)
-                const isFirstPost = (index === 0);
-
-                // Process with special handling for the first post
-                processFeedElement(feedChild, feedContainer, isFirstPost);
-            });
-
-            // Mark feed as initialized after first processing
-            if (!feedInitialized && children.length > 0) {
-                feedInitialized = true;
-                console.log("Feed initialized with " + children.length + " items");
+            // First, make sure we handle the first post specially
+            if (children.length > 0 && !firstPostsHandled.has(feedContainer)) {
+                const firstPost = children[0];
+                // Process with special first post handling
+                processFeedElement(firstPost, feedContainer, true);
+                firstPostsHandled.add(feedContainer);
             }
+
+            // Now process the rest of the children
+            children.forEach((child, index) => {
+                // Skip the first one as we've already processed it
+                if (index === 0) return;
+
+                processFeedElement(child, feedContainer, false);
+            });
         });
 
         // Process other content normally
@@ -388,17 +422,56 @@
         monitorSeeMoreButtons();
     }
 
+    // Set up a dedicated observer for a specific feed container
+    function setupFeedObserver(feedContainer) {
+        // Skip if we've already set up an observer for this feed
+        if (feedContainer._hasObserver) return;
+
+        // Mark this feed as having an observer
+        feedContainer._hasObserver = true;
+
+        // Create a dedicated observer for this feed
+        const config = { childList: true };
+
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    // Handle new posts added to the feed
+                    Array.from(mutation.addedNodes).forEach((node, index) => {
+                        if (node.nodeType !== 1) return; // Skip non-element nodes
+
+                        // Check if this is the first post (index 0 and first child)
+                        const isFirstPost = (
+                            index === 0 &&
+                            feedContainer.children.length > 0 &&
+                            feedContainer.children[0] === node &&
+                            !firstPostsHandled.has(feedContainer)
+                        );
+
+                        if (isFirstPost) {
+                            firstPostsHandled.add(feedContainer);
+                        }
+
+                        // Process with appropriate handling based on position
+                        processFeedElement(node, feedContainer, isFirstPost);
+                    });
+                }
+            });
+        });
+
+        observer.observe(feedContainer, config);
+    }
+
     // Block suggested groups, pages, and other recommendations
     function blockSuggestedContent() {
         document.querySelectorAll('div[data-pagelet="GroupSuggestions"], div[data-pagelet="GroupSuggestion"]').forEach(group => {
             if (processedElements.has(group)) return;
-
             processedElements.add(group);
 
             const groupText = group.textContent;
             if (groupText && containsBlockedContent(groupText)) {
                 const foundWord = findBlockedWord(groupText);
-                console.log(`Removing suggested group containing blocked word: ${foundWord}`);
+                debugLog(`Removing suggested group with blocked word: ${foundWord}`);
 
                 // Suggestions are not part of the main feed, can remove safely
                 if (group.parentNode) {
@@ -409,13 +482,12 @@
 
         document.querySelectorAll('div[data-pagelet="RightRail"] a[href*="/pages/"]').forEach(page => {
             if (processedElements.has(page)) return;
-
             processedElements.add(page);
 
             const pageText = page.textContent;
             if (pageText && containsBlockedContent(pageText)) {
                 const foundWord = findBlockedWord(pageText);
-                console.log(`Removing suggested page containing blocked word: ${foundWord}`);
+                debugLog(`Removing suggested page with blocked word: ${foundWord}`);
 
                 // Right rail content is also safe to remove
                 const container = page.closest('div[role="complementary"]');
@@ -428,11 +500,10 @@
         });
     }
 
-    // Additional function to handle expanded text that might appear after clicking "See more"
+    // Handle expanded text after clicking "See more"
     function checkExpandedContent() {
         document.querySelectorAll('[aria-expanded="true"]').forEach(container => {
             if (processedElements.has(container)) return;
-
             processedElements.add(container);
 
             const postContainer = findPostContainer(container);
@@ -442,44 +513,37 @@
             if (!expandedText || !containsBlockedContent(expandedText)) return;
 
             const foundWord = findBlockedWord(expandedText);
-            console.log(`Removing expanded content containing blocked word: ${foundWord}`);
+            debugLog(`Removing expanded content with blocked word: ${foundWord}`);
 
-            // Check if this is a direct child of feed
-            const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
-            const isFeedDirectChild = feedContainer && feedContainer.contains(postContainer) &&
-                                     postContainer.parentNode === feedContainer;
+            // Find the relevant feed container
+            const allFeedContainers = document.querySelectorAll(CONTENT_SELECTORS.feedRootContainer);
+            let isFeedDirectChild = false;
+            let isFirstChild = false;
+            let relevantFeedContainer = null;
 
-            // Check if it's the first child
-            const isFirstChild = feedContainer &&
-                                feedContainer.children.length > 0 &&
-                                feedContainer.children[0] === postContainer;
-
-            // Special handling for first post
-            if (isFirstChild && !firstPostPreserved) {
-                console.log("Preserving expanded first post structure");
-                firstPostPreserved = true;
-
-                // Hide content but preserve structure
-                postContainer.style.opacity = '0';
-                postContainer.style.minHeight = '5px';
-                postContainer.style.overflow = 'hidden';
-                postContainer.setAttribute('data-blocked-content', 'true');
-
-                // Clear content
-                while (postContainer.firstChild) {
-                    postContainer.removeChild(postContainer.firstChild);
+            for (const container of allFeedContainers) {
+                if (container.contains(postContainer) && postContainer.parentNode === container) {
+                    isFeedDirectChild = true;
+                    relevantFeedContainer = container;
+                    isFirstChild = container.children.length > 0 &&
+                                 container.children[0] === postContainer;
+                    break;
                 }
-                return;
             }
 
+            // Handle based on position
             if (isFeedDirectChild) {
-                // Replace with placeholder
-                const placeholder = createPlaceholder(postContainer);
-                if (postContainer.parentNode) {
-                    postContainer.parentNode.replaceChild(placeholder, postContainer);
+                if (isFirstChild && !firstPostsHandled.has(relevantFeedContainer)) {
+                    firstPostsHandled.add(relevantFeedContainer);
+                    preserveFirstPost(postContainer);
+                } else {
+                    const placeholder = createPlaceholder(postContainer);
+                    if (postContainer.parentNode) {
+                        postContainer.parentNode.replaceChild(placeholder, postContainer);
+                    }
                 }
             } else {
-                // For other elements, fully remove
+                // For non-feed items, remove
                 if (postContainer.parentNode) {
                     postContainer.parentNode.removeChild(postContainer);
                 }
@@ -520,9 +584,6 @@
                             if ((node.matches && node.matches(CONTENT_SELECTORS.feedRootContainer)) ||
                                 (node.querySelector && node.querySelector(CONTENT_SELECTORS.feedRootContainer))) {
                                 newFeedDetected = true;
-                                // Reset first post preservation when new feed is detected
-                                firstPostPreserved = false;
-                                console.log("New feed detected, resetting first post preservation");
                             }
                         }
                     });
@@ -538,7 +599,7 @@
             if (shouldCheck || hasExpandedContent) {
                 clearTimeout(window._checkTimeout);
                 window._checkTimeout = setTimeout(() => {
-                    // Use longer delay for new feeds to ensure they're fully loaded
+                    // Use longer delay for new feeds
                     const delay = newFeedDetected ? 500 : 150;
 
                     setTimeout(() => {
@@ -558,17 +619,17 @@
         isObserving = true;
     }
 
-    // Document click handler to catch all clicks that might expand content
+    // Global click handler to catch all clicks
     function setupGlobalClickHandler() {
         document.addEventListener('click', function(e) {
             setTimeout(() => {
                 checkExpandedContent();
                 monitorSeeMoreButtons();
             }, 500);
-        }, { passive: true });
+        }, { capture: true, passive: true });
     }
 
-    // Handle scrolling to check for dynamically loaded content
+    // Handle scrolling to check for loaded content
     function handleScroll() {
         clearTimeout(window._scrollTimeout);
         window._scrollTimeout = setTimeout(() => {
@@ -577,34 +638,44 @@
         }, 200);
     }
 
-    // Reset tracking data for when page changes
+    // Reset tracking data when page changes
     function resetTracking() {
         processedElements = new WeakSet();
         feedInitialized = false;
-        firstPostPreserved = false; // Reset first post preservation
+        firstPostsHandled = new Set();
+
+        // Disconnect any existing observers
+        if (observer) {
+            observer.disconnect();
+            isObserving = false;
+        }
+
+        // Remove any feed-specific observers
+        document.querySelectorAll(CONTENT_SELECTORS.feedRootContainer).forEach(feed => {
+            delete feed._hasObserver;
+        });
     }
 
     // Detect URL changes for SPA navigation
     function setupURLChangeDetection() {
-        let lastUrl = location.href;
+        lastUrl = location.href;
 
         function handleNavigation() {
             if (!isRelevantPage()) return;
 
-            if (observer) {
-                observer.disconnect();
-                isObserving = false;
-            }
+            debugLog("Navigation detected to:", location.href);
 
-            // Reset processed elements tracking
+            // Reset tracking on navigation
             resetTracking();
 
+            // Wait a bit for the new page to load
             setTimeout(() => {
                 setupMutationObserver();
                 checkAndBlockContent();
             }, 1000);
         }
 
+        // MutationObserver for detecting URL changes
         const urlObserver = new MutationObserver(() => {
             const url = location.href;
             if (url !== lastUrl) {
@@ -615,6 +686,7 @@
 
         urlObserver.observe(document, {subtree: true, childList: true});
 
+        // Monitor pushState
         const originalPushState = history.pushState;
         history.pushState = function() {
             originalPushState.apply(this, arguments);
@@ -625,32 +697,57 @@
             }
         };
 
+        // Monitor popstate
         window.addEventListener('popstate', () => {
             if (location.href !== lastUrl) {
                 lastUrl = location.href;
                 handleNavigation();
             }
         });
+
+        // Additional handling for the dialog closing which can affect feed visibility
+        function checkForDialogChanges() {
+            // Look for any dialogs that might contain images, videos, etc.
+            const dialogs = document.querySelectorAll('[role="dialog"]');
+            if (dialogs.length === 0) {
+                // No dialogs found, might have just closed one
+                setTimeout(() => {
+                    checkAndBlockContent();
+                }, 500);
+            }
+        }
+
+        // Monitor for dialog changes
+        document.addEventListener('click', function(e) {
+            // Look for close buttons in dialogs
+            if (e.target && (
+                (e.target.getAttribute('aria-label') === 'Close') ||
+                e.target.closest('[aria-label="Close"]') ||
+                e.target.classList.contains('x1lliihq') // Facebook's typical close button class
+            )) {
+                setTimeout(checkForDialogChanges, 300);
+            }
+        }, { capture: true, passive: true });
     }
 
-    // Function to wait for feed container and retry multiple times
+    // Wait for feed container with multiple retries
     function waitForFeedContainer(retries = 10, delay = 300) {
         if (retries <= 0) {
-            console.log("Feed container not found after maximum retries");
+            debugLog("Feed container not found after maximum retries");
             return;
         }
 
         const feedContainer = document.querySelector(CONTENT_SELECTORS.feedRootContainer);
         if (feedContainer) {
-            console.log("Feed container found, processing content");
+            debugLog("Feed container found, processing content");
             checkAndBlockContent();
         } else {
-            console.log(`Feed container not found, retrying in ${delay}ms (${retries} retries left)`);
+            debugLog(`Feed container not found, retrying in ${delay}ms (${retries} retries left)`);
             setTimeout(() => waitForFeedContainer(retries - 1, delay), delay);
         }
     }
 
-    // Recheck content periodically to catch items missed by observers
+    // Recheck content periodically
     function setupPeriodicCheck() {
         setInterval(() => {
             if (isRelevantPage()) {
@@ -659,6 +756,35 @@
                 monitorSeeMoreButtons();
             }
         }, 3000);
+    }
+
+    // Special back navigation handler
+    function setupBackNavigationHandler() {
+        window.addEventListener('pageshow', function(event) {
+            // This fires when navigating back to the page from history
+            if (event.persisted) {
+                debugLog("Page was restored from back/forward cache");
+                setTimeout(() => {
+                    // Reset tracking and re-initialize
+                    resetTracking();
+                    setupMutationObserver();
+                    checkAndBlockContent();
+                }, 500);
+            }
+        });
+    }
+
+    // Special handling for photo/video viewer closure
+    function setupViewerCloseHandler() {
+        // Monitor for escape key which often closes dialogs
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                // Wait for the dialog to close
+                setTimeout(() => {
+                    checkAndBlockContent();
+                }, 500);
+            }
+        });
     }
 
     // Check if current page is Facebook
