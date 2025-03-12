@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Clean Feed (Facebook Content Blocker) - Fixed
+// @name         Clean Feed (Facebook Content Blocker)
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  Delete Facebook posts containing specific keywords, sponsored posts, and suggested content from Threads/Instagram.
