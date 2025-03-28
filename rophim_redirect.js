@@ -13,7 +13,7 @@
     const style = `
     @import url(https://fonts.googleapis.com/css2?family=Varela+Round&display=swap);
     #totop{display:none!important}
-    .switch{position:fixed;bottom:20px;right:20px;z-index:9999;height:24px;width:120px}
+    .switch{position:fixed;bottom:20px;right:20px;z-index:9999;height:24px;width:80px;backdrop-filter:blur(2px)}
     .switch input{display:block;appearance:none;position:absolute;width:100%;height:24px;border:0;padding:0;margin:0;cursor:pointer;background:none;-webkit-tap-highlight-color:#fff0}
     .switch input:checked ~ .on{transform:translateY(0) scale(1);opacity:1;color:#f0d25c;filter:blur(0)}
     .switch input:checked ~ .on ~ span:after{transform:translateY(0)}
