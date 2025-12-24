@@ -460,18 +460,3 @@ button.BaseButton_BaseButton__QOcYl{background:rgb(255 255 255 / 10%)!important}
   50%{transform:translate(30%,-20%);}
   100%{transform:translate(96%,-10%);}
 }
-/*----Responsive Design----*/
-@media (max-width:1200px) {
-.l-sidebar-right{display:none!important}	
-.l-fluid-fixed .l-main,.l-hero-content{padding-right:0!important;margin:0!important}
-}
-@media (max-width:1000px) {
-.playControls .playControls__control{display:none!important}
-.playControls__timeline{left:57%!important;margin:0!important}
-.playControls__volume{position:absolute!important;left:97%!important}
-}
-@media (max-width:580px) {
-header{display:none!important}
-.sc-classic .playControls__timeline{max-width:60%!important;left:37%!important}
-.sc-classic .playControls__soundBadge{width:200px!important}
-}
